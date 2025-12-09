@@ -1,50 +1,52 @@
 package com.example.lab8
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.example.lab8.databinding.AdapterRowBinding
 
+// 改繼承 ListAdapter，並傳入 DiffCallback
 class MyAdapter(
-    private val data: ArrayList<Contact>
-) : RecyclerView.Adapter<MyAdapter.ViewHolder>() {
-    // 實作 RecyclerView.ViewHolder 來儲存View
-    class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
-        // 儲存 View 元件
-        private val tvName: TextView = v.findViewById(R.id.tvName)
-        private val tvPhone: TextView = v.findViewById(R.id.tvPhone)
-        private val imgDelete: ImageView = v.findViewById(R.id.imgDelete)
+    private val onItemClick: (Contact) -> Unit // 傳入點擊事件的 Lambda
+) : ListAdapter<Contact, MyAdapter.ViewHolder>(DiffCallback) {
 
-        // 連結資料與 View
+    // DiffUtil 用來比較新舊資料差異，提升效能
+    companion object DiffCallback : DiffUtil.ItemCallback<Contact>() {
+        override fun areItemsTheSame(oldItem: Contact, newItem: Contact): Boolean {
+            // 在實際專案通常比對 ID，這裡比對物件本身
+            return oldItem == newItem
+        }
+
+        override fun areContentsTheSame(oldItem: Contact, newItem: Contact): Boolean {
+            return oldItem == newItem
+        }
+    }
+
+    // ViewHolder 使用 ViewBinding
+    class ViewHolder(private val binding: AdapterRowBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: Contact, clickListener: (Contact) -> Unit) {
-            tvName.text = item.name
-            tvPhone.text = item.phone
-            // 設定監聽器
-            imgDelete.setOnClickListener {
-                // 呼叫 clickListener 回傳刪除的資料
-                clickListener.invoke(item)
+            binding.tvName.text = item.name
+            binding.tvPhone.text = item.phone
+            // 設定刪除按鈕監聽
+            binding.imgDelete.setOnClickListener {
+                clickListener(item)
             }
         }
     }
 
-    // 建立ViewHolder與Layout並連結彼此
-    override fun onCreateViewHolder(viewGroup: ViewGroup, position: Int): ViewHolder {
-        val v = LayoutInflater.from(viewGroup.context)
-            .inflate(R.layout.adapter_row, viewGroup, false)
-        return ViewHolder(v)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        // 使用 ViewBinding 建立畫面
+        val binding = AdapterRowBinding.inflate(
+            LayoutInflater.from(parent.context), 
+            parent, 
+            false
+        )
+        return ViewHolder(binding)
     }
 
-    // 回傳資料數量
-    override fun getItemCount() = data.size
-
-    // 將資料指派給 ViewHolder 顯示
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(data[position]) { item ->
-            // 使用 remove() 刪除指定的資料
-            data.remove(item)
-            notifyDataSetChanged()
-        }
+        holder.bind(getItem(position), onItemClick)
     }
 }

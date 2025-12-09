@@ -1,124 +1,102 @@
 package com.example.lab9_1
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.Message
-import android.widget.Button
-import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.lab9_1.databinding.ActivityMainBinding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    // 建立兩個數值，用於計算兔子與烏龜的進度
-    private var progressRabbit = 0
-    private var progressTurtle = 0
-    // 建立變數以利後續綁定元件
-    private lateinit var btnStart: Button
-    private lateinit var sbRabbit: SeekBar
-    private lateinit var sbTurtle: SeekBar
+    private lateinit var binding: ActivityMainBinding
+    
+    // 用於控制比賽狀態
+    private var isRacing = false
+    
+    // 用於儲存協程 Job，以便取消
+    private var rabbitJob: Job? = null
+    private var turtleJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+        
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        
+        ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
 
-        // 將變數與XML元件綁定
-        btnStart = findViewById(R.id.btnStart)
-        sbRabbit = findViewById(R.id.sbRabbit)
-        sbTurtle = findViewById(R.id.sbTurtle)
-        // 對開始按鈕設定監聽器
-        btnStart.setOnClickListener {
-            // 進行賽跑後按鈕不可被操作
-            btnStart.isEnabled = false
-            // 初始化兔子的賽跑進度
-            progressRabbit = 0
-            // 初始化烏龜的賽跑進度
-            progressTurtle = 0
-            // 初始化兔子的SeekBar進度
-            sbRabbit.progress = 0
-            // 初始化烏龜的SeekBar進度
-            sbTurtle.progress = 0
-            // 兔子起跑
-            runRabbit()
-            // 烏龜起跑
-            runTurtle()
+        binding.btnStart.setOnClickListener {
+            startRace()
         }
     }
 
-    // 建立 showToast 方法顯示Toast訊息
-    private fun showToast(msg: String) =
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun startRace() {
+        // 初始化狀態
+        binding.btnStart.isEnabled = false
+        binding.sbRabbit.progress = 0
+        binding.sbTurtle.progress = 0
+        isRacing = true
 
-    // 建立 Handler 變數接收訊息
-    private val handler = Handler(Looper.getMainLooper()) { msg ->
-        // 判斷編號，並更新兔子的進度
-        if (msg.what == 1) {
-            // 更新兔子的進度
-            sbRabbit.progress = progressRabbit
-            // 若兔子抵達，則顯示兔子勝利
-            if (progressRabbit >= 100 && progressTurtle < 100) {
-                showToast("兔子勝利") // 顯示兔子勝利
-                btnStart.isEnabled = true // 按鈕可操作
-            }
-        } else if (msg.what == 2) {
-            // 更新烏龜的進度
-            sbTurtle.progress = progressTurtle
-            // 若烏龜抵達，則顯示烏龜勝利
-            if (progressTurtle >= 100 && progressRabbit < 100) {
-                showToast("烏龜勝利") // 顯示烏龜勝利
-                btnStart.isEnabled = true // 按鈕可操作
-            }
-        }
-        true
-    }
-
-    // 用 Thread 模擬兔子移動
-    private fun runRabbit() {
-        Thread {
-            // 兔子有三分之二的機率會偷懶
+        // 啟動兔子協程 (使用 lifecycleScope 自動管理生命週期)
+        rabbitJob = lifecycleScope.launch {
+            var progress = 0
             val sleepProbability = arrayOf(true, true, false)
-            while (progressRabbit < 100 && progressTurtle < 100) {
-                try {
-                    Thread.sleep(100) // 延遲0.1秒更新賽況
-                    if (sleepProbability.random())
-                        Thread.sleep(300) // 兔子偷懶0.3秒
-                } catch (e: InterruptedException) {
-                    e.printStackTrace()
+            
+            // isActive 用來檢查協程是否被取消
+            while (isActive && isRacing && progress < 100) {
+                delay(100) // 延遲 0.1 秒 (非阻塞)
+                
+                if (sleepProbability.random()) {
+                    delay(300) // 兔子偷懶 0.3 秒
                 }
-                progressRabbit += 3 // 每次跑三步
+                
+                progress += 3
+                // 直接更新 UI，因為 lifecycleScope 預設在 Main Dispatcher
+                binding.sbRabbit.progress = progress.coerceAtMost(100)
 
-                val msg = Message() // 建立Message物件
-                msg.what = 1  // 加入編號
-                handler.sendMessage(msg) // 傳送兔子的賽況訊息
+                if (progress >= 100 && isRacing) {
+                    endRace("兔子勝利")
+                }
             }
-        }.start() // 啟動 Thread
+        }
+
+        // 啟動烏龜協程
+        turtleJob = lifecycleScope.launch {
+            var progress = 0
+            while (isActive && isRacing && progress < 100) {
+                delay(100) // 延遲 0.1 秒
+                
+                progress += 1
+                binding.sbTurtle.progress = progress.coerceAtMost(100)
+
+                if (progress >= 100 && isRacing) {
+                    endRace("烏龜勝利")
+                }
+            }
+        }
     }
 
-    // 用 Thread 模擬烏龜移動
-    private fun runTurtle() {
-        Thread {
-            while (progressTurtle < 100 && progressRabbit < 100) {
-                try {
-                    Thread.sleep(100) // 延遲0.1秒更新賽況
-                } catch (e: InterruptedException) {
-                    e.printStackTrace()
-                }
-                progressTurtle += 1 // 每次跑一步
-
-                val msg = Message() // 建立Message物件
-                msg.what = 2 // 加入編號
-                handler.sendMessage(msg) // 傳送烏龜的賽況訊息
-            }
-        }.start() // 啟動 Thread
+    private fun endRace(winner: String) {
+        if (!isRacing) return // 防止重複呼叫
+        
+        isRacing = false
+        // 取消兩者的跑動
+        rabbitJob?.cancel()
+        turtleJob?.cancel()
+        
+        Toast.makeText(this, winner, Toast.LENGTH_SHORT).show()
+        binding.btnStart.isEnabled = true
     }
 }
